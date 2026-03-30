@@ -32,16 +32,19 @@ def parse_and_extract():
 def process_single_npy(npy_path):
     video_landmarks = np.load(npy_path)
     number_of_frames = video_landmarks.shape[0]
-    original_shape = video_landmarks.shape
-    video_landmarks = video_landmarks.reshape(number_of_frames,-1,3)
-    left_shoulder = video_landmarks[:,11,:]
-    right_shoulder = video_landmarks[:,12,:]
-    origin = (left_shoulder + right_shoulder )/ 2 
-    shoulder_width = np.linalg.norm(left_shoulder-right_shoulder)
-    if shoulder_width<=0:
-        shoulder_width=1
-    video_landmarks = (video_landmarks - origin) / shoulder_width
-    video_landmarks = np.reshape(number_of_frames,video_landmarks.shape[1]*video_landmarks.shape[2])
+    shifted_landmarks = video_landmarks.reshape(number_of_frames,-1,3)
+
+    left_shoulder = shifted_landmarks[:,11,:]
+    right_shoulder = shifted_landmarks[:,12,:]
+    origin_coord = (left_shoulder + right_shoulder )/ 2 
+
+    shoulder_width = np.linalg.norm(left_shoulder-right_shoulder,axis=1)
+    shoulder_width[shoulder_width<=0] = 1.0
+
+    shifted_landmarks = (shifted_landmarks - origin_coord[:, np.newaxis, :]) / shoulder_width[:, np.newaxis, np.newaxis]
+    shifted_landmarks = shifted_landmarks.reshape(number_of_frames,-1)
+
+    np.save(npy_path,shifted_landmarks)
     return 
 
 
