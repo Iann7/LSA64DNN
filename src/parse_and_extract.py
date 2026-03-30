@@ -1,10 +1,12 @@
 from pathlib import Path
+from concurrent.futures import ProcessPoolExecutor,as_completed
+from tqdm import tqdm 
+import os 
 import mediapipe as mp
 import cv2  
 import numpy as np 
 import re 
 import pandas as pd 
-from tqdm import tqdm 
 
 # Paths
 DATA_DIR = Path("data/raw")
@@ -15,10 +17,6 @@ METADATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # Video Files
 video_files = list(DATA_DIR.glob("*.mp4")) 
-
-# Initialize MediaPipe
-mp_pose = mp.solutions.pose
-pose = mp_pose.Pose(static_image_mode=False, model_complexity=2)
 
 # Sign Names
 SIGN_NAMES = {
@@ -38,57 +36,105 @@ SIGN_NAMES = {
 }   
 
 def parse_and_extract():
+    num_workers = 2
+    print(f"Starting parallel processing with {num_workers} cores!")
+    
     all_labels = []
-    for video_path in tqdm(video_files,desc="Processing Videos"):
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        future_to_video = {executor.submit(process_single_video, video_path): video_path for video_path in video_files}
+        for future in tqdm(as_completed(future_to_video),total=len(video_files),desc="Processing Videos"):
+            result = future.result() 
+            if result.get('success'):
+                all_labels.append(result)
+
+    if all_labels:
+        data_frame = pd.DataFrame(all_labels)
+        data_frame.drop(columns=['success'], inplace=True)
+        data_frame.to_csv(METADATA_DIR / 'real_labels.csv', index=False)
+        print(f"\nSaved labels to {METADATA_DIR / 'real_labels.csv'}")  
+        print(f"Total: {len(data_frame)} videos processed")
+
+def process_single_video(video_path):
+    try:
+        # 1. Initialize inside the worker process
+        holistic_model = init_mediapipe()
+        
         stem = video_path.stem  
         parts = stem.split('_')  
         sign_id = int(parts[0])
-        subject = int(parts[1])
-        repetition = int(parts[2])
-        sign_name = SIGN_NAMES[sign_id]  
-        video_landmarks = parse_video(video_path)
+        
+        # 2. Pass the model instance to the parser
+        video_landmarks = parse_video(video_path, holistic_model)
+        
+        # Clean up the model to free memory in the subprocess
+        holistic_model.close()
+
         if len(video_landmarks) > 0:
             poses_array = np.array(video_landmarks)
             output_path = POSE_DIR / f"{stem}.npy"
-            np.save(output_path,poses_array)
-            all_labels.append({
+            np.save(output_path, poses_array)
+            
+            return {
                 'filename': f"{stem}.npy",
                 'sign_id': sign_id,
-                'subject': subject,
-                'repetition': repetition,
-                'sign_name': sign_name,
-                'num_frames': len(video_landmarks)
-            })
-            print(f"Saved {stem}:{poses_array.shape}")
-    if all_labels:
-        data_frame = pd.DataFrame(all_labels)
-        data_frame.to_csv(METADATA_DIR / 'real_labels.csv',index=False)
-        print(f"\n Saved labels to {METADATA_DIR / 'real_labels.csv'}")  
-        print(f"   Total: {len(data_frame)} videos processed")                     
+                'subject': int(parts[1]),
+                'repetition': int(parts[2]),
+                'sign_name': SIGN_NAMES[sign_id],
+                'num_frames': len(video_landmarks),
+                'success': True
+            }
+    except Exception as e:
+        print(f"Error processing {video_path}: {e}")
+    
+    return {'success': False}
 
-def parse_video(video_path):
+def init_mediapipe():
+    mp_holistic = mp.solutions.holistic
+    holistic = mp_holistic.Holistic(
+    static_image_mode=False,
+    model_complexity=1,
+    refine_face_landmarks=False)
+    return holistic
+
+def parse_video(video_path, holistic):
     cap = cv2.VideoCapture(str(video_path))
     landmarks = [] 
-    while True:
-        ret,frame = cap.read()
+    while cap.isOpened():
+        ret, frame = cap.read()
         if not ret:
             break
-        landmark = extract_landmark_from_frame(frame)
-        if landmark:
-            landmarks.append(landmark)
+        # 3. Pass holistic through here
+        landmark = extract_landmark_from_frame(frame, holistic)
+        landmarks.append(landmark)
     cap.release()
     return landmarks
 
-def extract_landmark_from_frame(frame):
-    rgb_frame = cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
-    result = mp_pose.process(rgb_frame)
-    if result.pose_landmarks:
-        landmarks = []
-        for lm in result.pose_landmarks.landmark:
-            landmarks.extend([lm.x,lm.y,lm.z]) 
-        return landmarks
-    else:
-        return None 
+def extract_landmark_from_frame(frame,holistic):
 
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    result = holistic.process(rgb_frame)
+    pose = get_coords(result.pose_landmarks, 33)
+    lh = get_coords(result.left_hand_landmarks, 21)
+    rh = get_coords(result.right_hand_landmarks, 21)
+    #Faces are left out due to LSA64 not using facial gestures at all
+    return normalize_relative(pose, lh, rh) 
+
+def get_coords(res, num_landmarks):
+    if res:
+        return [val for lm in res.landmark for val in [lm.x, lm.y, lm.z]]
+    else:
+        return [0.0] * (num_landmarks * 3) 
+
+def normalize_relative(pose,lh,rh):
+    all_landmarks = np.concatenate([pose,lh,rh]).reshape(-1,3)
+    origin = all_landmarks[0].copy()
+    left_shoulder = all_landmarks[11]
+    right_shoulder = all_landmarks[12]
+    shoulder_width = np.linalg.norm(left_shoulder-right_shoulder)
+    if shoulder_width<=0:
+        shoulder_width=1
+    all_landmarks = (all_landmarks - origin) / shoulder_width
+    #TODO:IMPLEMENT  FOR FIX GHOST HANDS
+    return all_landmarks.flatten()
 if __name__ == "__main__":
     parse_and_extract()
