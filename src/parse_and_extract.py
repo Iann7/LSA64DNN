@@ -117,7 +117,7 @@ def extract_landmark_from_frame(frame,holistic):
     lh = get_coords(result.left_hand_landmarks, 21)
     rh = get_coords(result.right_hand_landmarks, 21)
     #Faces are left out due to LSA64 not using facial gestures at all
-    return normalize_relative(pose, lh, rh) 
+    return np.concatenate([pose, lh, rh])
 
 def get_coords(res, num_landmarks):
     if res:
@@ -125,16 +125,5 @@ def get_coords(res, num_landmarks):
     else:
         return [0.0] * (num_landmarks * 3) 
 
-def normalize_relative(pose,lh,rh):
-    all_landmarks = np.concatenate([pose,lh,rh]).reshape(-1,3)
-    origin = all_landmarks[0].copy()
-    left_shoulder = all_landmarks[11]
-    right_shoulder = all_landmarks[12]
-    shoulder_width = np.linalg.norm(left_shoulder-right_shoulder)
-    if shoulder_width<=0:
-        shoulder_width=1
-    all_landmarks = (all_landmarks - origin) / shoulder_width
-    #TODO:IMPLEMENT  FOR FIX GHOST HANDS
-    return all_landmarks.flatten()
 if __name__ == "__main__":
     parse_and_extract()

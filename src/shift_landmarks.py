@@ -11,6 +11,7 @@ import pandas as pd
 # Paths
 DATA_DIR = Path("data/raw")
 POSE_DIR = Path("data/poses/real")
+OUTPUT_DIR = Path("data/poses/shifted")
 METADATA_DIR = Path("data/metadata")
 POSE_DIR.mkdir(parents=True, exist_ok=True)
 METADATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -32,19 +33,26 @@ def parse_and_extract():
 def process_single_npy(npy_path):
     video_landmarks = np.load(npy_path)
     number_of_frames = video_landmarks.shape[0]
+    print( f"min {video_landmarks.min()} and max {video_landmarks.max()}")
     shifted_landmarks = video_landmarks.reshape(number_of_frames,-1,3)
-
     left_shoulder = shifted_landmarks[:,11,:]
     right_shoulder = shifted_landmarks[:,12,:]
-    origin_coord = (left_shoulder + right_shoulder )/ 2 
 
-    shoulder_width = np.linalg.norm(left_shoulder-right_shoulder,axis=1)
-    shoulder_width[shoulder_width<=0] = 1.0
+    left_hip = shifted_landmarks[0,23,:]
+    right_hip = shifted_landmarks[0,24,:]
 
-    shifted_landmarks = (shifted_landmarks - origin_coord[:, np.newaxis, :]) / shoulder_width[:, np.newaxis, np.newaxis]
+    center_shoulder = (left_shoulder + right_shoulder )/ 2
+    center_hip = (left_hip + right_hip )/ 2
+
+    origin_coord = center_shoulder
+
+    torso_width = np.linalg.norm(center_shoulder[0]-center_hip)
+    #torso_width[torso_width<=0] = 1.0
+
+    shifted_landmarks = (shifted_landmarks - origin_coord[:, np.newaxis, :]) / torso_width
     shifted_landmarks = shifted_landmarks.reshape(number_of_frames,-1)
-
-    np.save(npy_path,shifted_landmarks)
+    output_path = OUTPUT_DIR / npy_path.name
+    np.save(output_path,shifted_landmarks)
     return 
 
 
