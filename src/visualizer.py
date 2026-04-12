@@ -10,14 +10,14 @@ mp_drawing = mp.solutions.drawing_utils
 mp_holistic = mp.solutions.holistic
 
 # Define paths
-DATA_DIR = Path("data/raw")
+DATA_DIR = Path("data/real")
 POSE_DIR = Path("data/poses/real")
 OUTPUT_DIR = Path("data/output")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Load your data
-pose_path = next(POSE_DIR.glob("001_002_004.npy"), None)
-video_path = next(DATA_DIR.glob("001_002_004.mp4"), None)
+pose_path = next(POSE_DIR.glob("001_004_002.npy"), None)
+video_path = next(DATA_DIR.glob("001_004_002.mp4"), None)
 
 if pose_path is None:
     raise FileNotFoundError("No pose .npy file found in data/poses/real/")
@@ -34,7 +34,7 @@ out = cv2.VideoWriter(str(output_path), fourcc, fps, (frame_width, frame_height)
 
 # Visualization Loop
 print(f"Processing {len(poses)} frames...")
-for frame_idx in tqdm(range(len(poses))):
+for frame_idx in range(len(poses)):
     # Create a black canvas
     display_frame = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
     
@@ -43,20 +43,16 @@ for frame_idx in tqdm(range(len(poses))):
     
     # Convert to MediaPipe Landmark List
     landmark_list = landmark_pb2.NormalizedLandmarkList()
-    skip_indices = {15,16,17,18,19,20,21,22,25, 26, 27, 28, 29, 30, 31, 32}
-    print("==========================0")
+    print("==========================")
     for i in range(len(current_coords)):
-        if i >32:
-            continue
-       
+
         x, y, z = current_coords[i]
-        if i==12:
-            print(f"{x},{y},{z}")
+        if i==55:
+            print(x)
+            print(y)
+            print(z)
         viz_x = (x*0.5) + 0.5
         viz_y = (y*0.5) + 0.5
-        #if viz_x<0.51 and viz_x > 0.49 and viz_y<0.51 and viz_y > 0.49:
-        #    print(f"index {i} is 0,0")
-        # Rescale logic
         landmark_list.landmark.add(x=viz_x, y=viz_y, z=z)
     
     # Draw connections
@@ -68,7 +64,7 @@ for frame_idx in tqdm(range(len(poses))):
         connection_drawing_spec=mp_drawing.DrawingSpec(color=(0,0,255), thickness=2)
     )
     
-    # Write frame to video
+    # Write frame to video  
     out.write(display_frame)
     
     # Show preview (optional - comment out if too slow)

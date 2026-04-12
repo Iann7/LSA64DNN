@@ -1,5 +1,6 @@
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor,as_completed
+from scipy.ndimage import gaussian_filter1d
 from tqdm import tqdm 
 import os 
 import mediapipe as mp
@@ -11,7 +12,7 @@ import pandas as pd
 # Paths
 DATA_DIR = Path("data/raw")
 POSE_DIR = Path("data/poses/real")
-OUTPUT_DIR = Path("data/poses/shifted")
+OUTPUT_DIR = Path("data/poses/shifted_and_blurred")
 METADATA_DIR = Path("data/metadata")
 POSE_DIR.mkdir(parents=True, exist_ok=True)
 METADATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -21,7 +22,7 @@ npy_files = list(POSE_DIR.glob("*.npy"))
 
 
 
-def parse_and_extract():
+def parse_and_shift():
     num_workers = 2
     print(f"Starting parallel processing with {num_workers} cores!")
     print(len(npy_files))
@@ -33,7 +34,6 @@ def parse_and_extract():
 def process_single_npy(npy_path):
     video_landmarks = np.load(npy_path)
     number_of_frames = video_landmarks.shape[0]
-    print( f"min {video_landmarks.min()} and max {video_landmarks.max()}")
     shifted_landmarks = video_landmarks.reshape(number_of_frames,-1,3)
     left_shoulder = shifted_landmarks[:,11,:]
     right_shoulder = shifted_landmarks[:,12,:]
@@ -49,12 +49,36 @@ def process_single_npy(npy_path):
     torso_width = np.linalg.norm(center_shoulder[0]-center_hip)
     #torso_width[torso_width<=0] = 1.0
 
+
+
+
     shifted_landmarks = (shifted_landmarks - origin_coord[:, np.newaxis, :]) / torso_width
+
+    for dim in range(3):
+        shifted_landmarks[:,:,dim] = gaussian_filter1d(shifted_landmarks[:,:,dim],sigma=5.0,axis=0)
+    shifted_landmarks[:,16,:] = shifted_landmarks[:,33,:]
+    shifted_landmarks[:,18,:] = shifted_landmarks[:,33,:]
+    shifted_landmarks[:,20,:] = shifted_landmarks[:,33,:]
+    shifted_landmarks[:,22,:] = shifted_landmarks[:,33,:]
+
+
     shifted_landmarks = shifted_landmarks.reshape(number_of_frames,-1)
     output_path = OUTPUT_DIR / npy_path.name
     np.save(output_path,shifted_landmarks)
     return 
 
 
+def enforce_bone_lengths(original_bone_lengths,origin_bone_points,end_bone_points):
+    current_directions = end_bone_points-origin_bone_points
+    current_bone_lengths = np.linalg.norm(current_directions,axis=1,keepdims=True)
+    mask = current_bone_lengths>1e-6
+    scale = np.where(mask,original_bone_lengths/current_bone_lengths,1.0)
+    return np.where(mask,origin_bone_points+(current_directions*scale),end_bone_points)
+
+
+def get_stable_len(landmarks,p1, p2):
+    lens = np.linalg.norm(landmarks[:, p1, :] - landmarks[:, p2, :], axis=1)
+    
+    return np.percentile(lens, 90)
 if __name__ == "__main__":
-    parse_and_extract()
+    parse_and_shift()

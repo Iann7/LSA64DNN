@@ -57,17 +57,16 @@ def parse_and_extract():
 def process_single_video(video_path):
     try:
         # 1. Initialize inside the worker process
-        holistic_model = init_mediapipe()
+        pose_model,hands_model = init_mediapipe()
         
         stem = video_path.stem  
         parts = stem.split('_')  
         sign_id = int(parts[0])
         
         # 2. Pass the model instance to the parser
-        video_landmarks = parse_video(video_path, holistic_model)
-        
-        # Clean up the model to free memory in the subprocess
-        holistic_model.close()
+        video_landmarks = parse_video(video_path, pose_model,hands_model)
+        pose_model.close()
+        hands_model.close()
 
         if len(video_landmarks) > 0:
             poses_array = np.array(video_landmarks)
@@ -88,15 +87,28 @@ def process_single_video(video_path):
     
     return {'success': False}
 
-def init_mediapipe():
-    mp_holistic = mp.solutions.holistic
-    holistic = mp_holistic.Holistic(
-    static_image_mode=False,
-    model_complexity=1,
-    refine_face_landmarks=False)
-    return holistic
 
-def parse_video(video_path, holistic):
+def init_mediapipe():
+    mp_pose = mp.solutions.pose
+    pose = mp_pose.Pose(
+        static_image_mode=False,      
+        model_complexity=1,           
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
+    )
+    
+    mp_hands = mp.solutions.hands
+    hands = mp_hands.Hands(
+        static_image_mode=False,      
+        max_num_hands=2,
+        model_complexity=1,           
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
+    )
+    
+    return pose, hands
+
+def parse_video(video_path, pose,hands):
     cap = cv2.VideoCapture(str(video_path))
     landmarks = [] 
     while cap.isOpened():
@@ -104,26 +116,38 @@ def parse_video(video_path, holistic):
         if not ret:
             break
         # 3. Pass holistic through here
-        landmark = extract_landmark_from_frame(frame, holistic)
+        landmark = extract_landmark_from_frame(frame,pose,hands)
         landmarks.append(landmark)
     cap.release()
     return landmarks
 
-def extract_landmark_from_frame(frame,holistic):
+def extract_landmark_from_frame(frame,pose,hands):
 
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    result = holistic.process(rgb_frame)
-    pose = get_coords(result.pose_landmarks, 33)
-    lh = get_coords(result.left_hand_landmarks, 21)
-    rh = get_coords(result.right_hand_landmarks, 21)
-    #Faces are left out due to LSA64 not using facial gestures at all
-    return np.concatenate([pose, lh, rh])
+    pose_result = get_pose_coords(pose.process(rgb_frame).pose_landmarks,33)
+    hand_result = extract_hand_coords(hands.process(rgb_frame))
+    return np.concatenate([pose_result,hand_result])# ✓ FIXED: iterate over the list
 
-def get_coords(res, num_landmarks):
+def get_pose_coords(res, num_landmarks):
     if res:
         return [val for lm in res.landmark for val in [lm.x, lm.y, lm.z]]
     else:
         return [0.0] * (num_landmarks * 3) 
+    
+def extract_hand_coords(hand_result):
+    if not hand_result.multi_hand_landmarks:
+        return [0.0] * (42 * 3)      
+    all_hand_coords = []
+    for hand_landmarks in hand_result.multi_hand_landmarks:  
+        for lm in hand_landmarks.landmark:
+            all_hand_coords.extend([lm.x, lm.y, lm.z])
+    
+    # Pad if only one hand detected
+    expected_length = 42 * 3
+    if len(all_hand_coords) < expected_length:
+        all_hand_coords.extend([0.0] * (expected_length - len(all_hand_coords)))
+    
+    return all_hand_coords
 
 if __name__ == "__main__":
     parse_and_extract()
