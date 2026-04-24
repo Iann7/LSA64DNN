@@ -34,36 +34,42 @@ out = cv2.VideoWriter(str(output_path), fourcc, fps, (frame_width, frame_height)
 
 # Visualization Loop
 print(f"Processing {len(poses)} frames...")
+def to_mp_list(pose_coords):
+    landmark_list = landmark_pb2.NormalizedLandmarkList()
+    print("==========================")
+    for i in range(len(pose_coords)):
+        x, y, z = pose_coords[i]
+        viz_x = (x*0.7) 
+        viz_y = (y*0.7) 
+        landmark_list.landmark.add(x=viz_x, y=viz_y, z=z)
+    return landmark_list
+
 for frame_idx in range(len(poses)):
     # Create a black canvas
     display_frame = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
     
     # Get landmarks for current frame
     current_coords = poses[frame_idx]
-    
+    pose_coords = current_coords[0:33]
+    hand_right_coords = current_coords[33:54]
+    hand_left_coords = current_coords[54:75]
     # Convert to MediaPipe Landmark List
-    landmark_list = landmark_pb2.NormalizedLandmarkList()
-    print("==========================")
-    for i in range(len(current_coords)):
-
-        x, y, z = current_coords[i]
-        if i==55:
-            print(x)
-            print(y)
-            print(z)
-        viz_x = (x*0.5) + 0.5
-        viz_y = (y*0.5) + 0.5
-        landmark_list.landmark.add(x=viz_x, y=viz_y, z=z)
-    
+    pose_landmark_list = to_mp_list(pose_coords)
+    hand_left_landmark_list = to_mp_list(hand_left_coords)
+    hand_right_landmark_list = to_mp_list(hand_right_coords)
     # Draw connections
     mp_drawing.draw_landmarks(
         display_frame, 
-        landmark_list, 
+        pose_landmark_list, 
         mp_holistic.POSE_CONNECTIONS,
         landmark_drawing_spec=mp_drawing.DrawingSpec(color=(0,255,0), thickness=2, circle_radius=2),
         connection_drawing_spec=mp_drawing.DrawingSpec(color=(0,0,255), thickness=2)
     )
-    
+    # MANO DERECHA
+    mp_drawing.draw_landmarks(display_frame, to_mp_list(hand_right_coords), mp_holistic.HAND_CONNECTIONS)
+
+    # MANO IZQUIERDA
+    mp_drawing.draw_landmarks(display_frame, to_mp_list(hand_left_coords), mp_holistic.HAND_CONNECTIONS)
     # Write frame to video  
     out.write(display_frame)
     

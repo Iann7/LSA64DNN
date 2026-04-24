@@ -10,7 +10,7 @@ import pandas as pd
 
 # Paths
 DATA_DIR = Path("data/raw")
-POSE_DIR = Path("data/poses/real")
+POSE_DIR = Path("data/poses/shifted_and_blurred")
 METADATA_DIR = Path("data/metadata")
 POSE_DIR.mkdir(parents=True, exist_ok=True)
 METADATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -36,7 +36,7 @@ SIGN_NAMES = {
 }   
 
 def parse_and_extract():
-    num_workers = 2
+    num_workers = 7
     print(f"Starting parallel processing with {num_workers} cores!")
     
     all_labels = []
@@ -56,14 +56,12 @@ def parse_and_extract():
 
 def process_single_video(video_path):
     try:
-        # 1. Initialize inside the worker process
         pose_model,hands_model = init_mediapipe()
         
         stem = video_path.stem  
         parts = stem.split('_')  
         sign_id = int(parts[0])
         
-        # 2. Pass the model instance to the parser
         video_landmarks = parse_video(video_path, pose_model,hands_model)
         pose_model.close()
         hands_model.close()
@@ -135,19 +133,27 @@ def get_pose_coords(res, num_landmarks):
         return [0.0] * (num_landmarks * 3) 
     
 def extract_hand_coords(hand_result):
+    output_coords = [0.0] * (42 * 3) 
+    
     if not hand_result.multi_hand_landmarks:
-        return [0.0] * (42 * 3)      
-    all_hand_coords = []
-    for hand_landmarks in hand_result.multi_hand_landmarks:  
-        for lm in hand_landmarks.landmark:
-            all_hand_coords.extend([lm.x, lm.y, lm.z])
-    
-    # Pad if only one hand detected
-    expected_length = 42 * 3
-    if len(all_hand_coords) < expected_length:
-        all_hand_coords.extend([0.0] * (expected_length - len(all_hand_coords)))
-    
-    return all_hand_coords
+        return output_coords
+        
+    for idx, hand_handedness in enumerate(hand_result.multi_handedness):
+        # MediaPipe a veces invierte las manos en el video, 
+        # pero el label 'Left'/'Right' suele ser consistente con la anatomía.
+        label = hand_handedness.classification[0].label # "Left" o "Right"
+        landmarks = hand_result.multi_hand_landmarks[idx]
+        
+        temp_coords = []
+        for lm in landmarks.landmark:
+            temp_coords.extend([lm.x, lm.y, lm.z])
+            
+        if label == "Right":
+            output_coords[0:63] = temp_coords  # Los primeros 21 puntos
+        else:
+            output_coords[63:126] = temp_coords # Los segundos 21 puntos
+            
+    return output_coords
 
 if __name__ == "__main__":
     parse_and_extract()

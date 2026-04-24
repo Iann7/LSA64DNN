@@ -35,6 +35,7 @@ def process_single_npy(npy_path):
     video_landmarks = np.load(npy_path)
     number_of_frames = video_landmarks.shape[0]
     shifted_landmarks = video_landmarks.reshape(number_of_frames,-1,3)
+
     left_shoulder = shifted_landmarks[:,11,:]
     right_shoulder = shifted_landmarks[:,12,:]
 
@@ -47,25 +48,35 @@ def process_single_npy(npy_path):
     origin_coord = center_shoulder
 
     torso_width = np.linalg.norm(center_shoulder[0]-center_hip)
-    #torso_width[torso_width<=0] = 1.0
 
-
-
-
-    shifted_landmarks = (shifted_landmarks - origin_coord[:, np.newaxis, :]) / torso_width
-
-    for dim in range(3):
-        shifted_landmarks[:,:,dim] = gaussian_filter1d(shifted_landmarks[:,:,dim],sigma=5.0,axis=0)
-    shifted_landmarks[:,16,:] = shifted_landmarks[:,33,:]
-    shifted_landmarks[:,18,:] = shifted_landmarks[:,33,:]
-    shifted_landmarks[:,20,:] = shifted_landmarks[:,33,:]
-    shifted_landmarks[:,22,:] = shifted_landmarks[:,33,:]
-
+    fill_in_zeroes(shifted_landmarks)
+    shifted_landmarks = shift_landmarks(shifted_landmarks, origin_coord, torso_width)
+    apply_gaussian_filter(shifted_landmarks)
 
     shifted_landmarks = shifted_landmarks.reshape(number_of_frames,-1)
     output_path = OUTPUT_DIR / npy_path.name
     np.save(output_path,shifted_landmarks)
     return 
+
+def fill_in_zeroes(shifted_landmarks):
+    num_landmarks = shifted_landmarks.shape[1]
+    for dim in range(3):
+        for landmark in range(num_landmarks):
+            shifted_landmarks[:,landmark,dim] =  interpolate1D(shifted_landmarks[:,landmark,dim])
+def interpolate1D(array):
+    valid_idx = np.where(array!=0)[0]
+    if len(valid_idx) == 0:
+        return array
+    all_idx = np.arange(len(array))
+    return np.interp(all_idx,valid_idx,array[valid_idx])
+def apply_gaussian_filter(shifted_landmarks):
+    #Apply the gaussian filter temporally for each landmark separately for each dimension of that landmark (XYZ) 
+    for dim in range(3):
+        shifted_landmarks[:,:,dim] = gaussian_filter1d(shifted_landmarks[:,:,dim],sigma=5.0,axis=0)
+
+def shift_landmarks(shifted_landmarks, origin_coord, torso_width):
+    # origin_coord debe tener shape (frames, 1, 3) para que numpy haga el broadcast bien
+    return (shifted_landmarks - origin_coord[:, np.newaxis, :]) / (torso_width + 1e-6)
 
 
 def enforce_bone_lengths(original_bone_lengths,origin_bone_points,end_bone_points):
@@ -77,8 +88,7 @@ def enforce_bone_lengths(original_bone_lengths,origin_bone_points,end_bone_point
 
 
 def get_stable_len(landmarks,p1, p2):
-    lens = np.linalg.norm(landmarks[:, p1, :] - landmarks[:, p2, :], axis=1)
-    
+    lens = np.linalg.norm(landmarks[:, p1, :] - landmarks[:, p2, :], axis=1)  
     return np.percentile(lens, 90)
 if __name__ == "__main__":
     parse_and_shift()
