@@ -16,11 +16,11 @@ OUTPUT_DIR = Path("data/output")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Load your data
-pose_path = next(POSE_DIR.glob("001_004_002.npy"), None)
-video_path = next(DATA_DIR.glob("001_004_002.mp4"), None)
+pose_path = next(POSE_DIR.glob("064_003_003.npy"), None)
+video_path = next(DATA_DIR.glob("064_003_003.mp4"), None)
 
 if pose_path is None:
-    raise FileNotFoundError("No pose .npy file found in data/poses/real/")
+    raise FileNotFoundError("No pose .npy file found in data/poses/shifted_and_blurred/")
 
 poses = np.load(pose_path)
 poses = poses.reshape(-1, 75, 3)

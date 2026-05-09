@@ -1,3 +1,5 @@
 data/raw
 *.mp4
 *.zip
+poses/
+*.pth
