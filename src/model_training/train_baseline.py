@@ -20,8 +20,8 @@ def train_baseline():
     print(device)
     val_metrics, test_metrics = [], []
     
-    for signer in range(10):  
-        train_loader, val_loader, test_loader = split_dataset_by_LOSO(signer+1)  
+    for signer in range(1):  
+        train_loader, val_loader, test_loader = split_dataset_by_LOSO(2+1)  
         model,best_model_state = train_epochs(device, train_loader, val_loader)
         signer_val_metrics, signer_test_metrics = check_best_model_accuracy(device, val_loader, test_loader, best_model_state)
         val_metrics.append(signer_val_metrics)

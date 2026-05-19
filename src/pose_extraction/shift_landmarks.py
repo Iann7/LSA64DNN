@@ -36,21 +36,8 @@ def process_single_npy(npy_path):
     number_of_frames = video_landmarks.shape[0]
     shifted_landmarks = video_landmarks.reshape(number_of_frames,-1,3)
 
-    left_shoulder = shifted_landmarks[:,11,:]
-    right_shoulder = shifted_landmarks[:,12,:]
-
-    left_hip = shifted_landmarks[0,23,:]
-    right_hip = shifted_landmarks[0,24,:]
-
-    center_shoulder = (left_shoulder + right_shoulder )/ 2
-    center_hip = (left_hip + right_hip )/ 2
-
-    origin_coord = center_shoulder
-
-    torso_width = np.linalg.norm(center_shoulder[0]-center_hip)
-
     fill_in_zeroes(shifted_landmarks)
-    shifted_landmarks = shift_landmarks(shifted_landmarks, origin_coord, torso_width)
+    shifted_landmarks = shift_landmarks(shifted_landmarks)
     apply_gaussian_filter(shifted_landmarks)
 
     shifted_landmarks = shifted_landmarks.reshape(number_of_frames,-1)
@@ -74,9 +61,32 @@ def apply_gaussian_filter(shifted_landmarks):
     for dim in range(3):
         shifted_landmarks[:,:,dim] = gaussian_filter1d(shifted_landmarks[:,:,dim],sigma=5.0,axis=0)
 
-def shift_landmarks(shifted_landmarks, origin_coord, torso_width):
+def shift_landmarks(landmarks):
+    left_shoulder = landmarks[:,11,:]
+    right_shoulder = landmarks[:,12,:]
+
+    left_hip = landmarks[0,23,:]
+    right_hip = landmarks[0,24,:]
+
+    center_shoulder = (left_shoulder + right_shoulder )/ 2
+    center_hip = (left_hip + right_hip )/ 2
+
+    origin_coord = center_shoulder
+
+    torso_width = np.linalg.norm(center_shoulder[0]-center_hip)
     # origin_coord debe tener shape (frames, 1, 3) para que numpy haga el broadcast bien
-    return (shifted_landmarks - origin_coord[:, np.newaxis, :]) / (torso_width + 1e-6)
+    shifted_landmarks =  (landmarks - origin_coord[:, np.newaxis, :]) / (torso_width + 1e-6)
+    #left_hand  =     shift_and_normalize_hand(landmarks[:,33:55,:])
+    #right_hand =    shift_and_normalize_hand(landmarks[:,55:76,:])
+    return shifted_landmarks
+
+
+
+def shift_and_normalize_hand(hand):
+    wrist = hand[:, 0:1, :]  
+    palm_width = np.linalg.norm(hand[:, 9, :] - hand[:, 0, :], axis=1, keepdims=True)
+    shifted_and_normalized_hand = (hand - wrist) / (palm_width[:, np.newaxis] + 1e-6)
+    return shifted_and_normalized_hand
 
 
 def enforce_bone_lengths(original_bone_lengths,origin_bone_points,end_bone_points):

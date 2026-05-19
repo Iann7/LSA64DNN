@@ -1,6 +1,7 @@
 import torch 
 import numpy as np 
 import  os
+import constants as consts
 from torchvision import transforms 
 
 class AddNoise(object):
@@ -15,17 +16,17 @@ class TemporallyOccludeLandmarks(object):
       self.drop_prob = drop_prob
    def __call__(self,tensor):
       frames = tensor.size(0)
-      landmark_tensor = torch.reshape(tensor,(frames,75,3))
+      landmark_tensor = torch.reshape(tensor,(frames,consts.LANDMARK_SIZE,3))
       
-      temporal_occlussion_mask = torch.rand(frames,75)
+      temporal_occlussion_mask = torch.rand(frames,consts.LANDMARK_SIZE)
       temporal_occlussion_mask = temporal_occlussion_mask > self.drop_prob
       temporal_occlussion_mask = temporal_occlussion_mask.float()
-      # (pasamos de frames,75) a (frames,75,1)
+      # (pasamos de frames,consts.LANDMARK_SIZE) a (frames,consts.LANDMARK_SIZE,1)
       temporal_occlussion_mask = temporal_occlussion_mask.unsqueeze(-1)
-      # (frames,75,3) * (frames,75,1)
+      # (frames,consts.LANDMARK_SIZE,3) * (frames,consts.LANDMARK_SIZE,1)
       landmark_tensor = landmark_tensor * temporal_occlussion_mask
-      # (frames,75,3) -> (frames,225)
-      tensor = torch.reshape(landmark_tensor,(frames,225))
+      # (frames,consts.LANDMARK_SIZE,3) -> (frames,225)
+      tensor = torch.reshape(landmark_tensor,(frames,consts.INPUT_SIZE))
       return tensor
 
 class CompletelyOccludeLandmarks(object):
@@ -33,16 +34,16 @@ class CompletelyOccludeLandmarks(object):
       self.drop_prob = drop_prob
    def __call__(self,tensor):
       frames = tensor.size(0)
-      landmark_tensor = torch.reshape(tensor,(frames,75,3))
+      landmark_tensor = torch.reshape(tensor,(frames,consts.LANDMARK_SIZE,3))
       
-      total_occlusion_mask = torch.rand(75,1)
+      total_occlusion_mask = torch.rand(consts.LANDMARK_SIZE,1)
       total_occlusion_mask = total_occlusion_mask > self.drop_prob
       total_occlusion_mask = total_occlusion_mask.float()
-      # (75,1) -> (1,75,1)
+      # (consts.LANDMARK_SIZE,1) -> (1,consts.LANDMARK_SIZE,1)
       total_occlusion_mask = total_occlusion_mask.unsqueeze(0)
-      # (frames,75,3) * (1,75,1)
+      # (frames,consts.LANDMARK_SIZE,3) * (1,consts.LANDMARK_SIZE,1)
       landmark_tensor = landmark_tensor * total_occlusion_mask
-      tensor = torch.reshape(landmark_tensor,(frames,225))
+      tensor = torch.reshape(landmark_tensor,(frames,consts.INPUT_SIZE))
       return tensor
 class CompletelyOccludeBodyParts(object):
 
@@ -58,8 +59,8 @@ class CompletelyOccludeBodyParts(object):
 
     def __call__(self, tensor):
         frames = tensor.size(0)
-        landmark_tensor = torch.reshape(tensor, (frames, 75, 3))
-        mask = torch.ones(75, 1)
+        landmark_tensor = torch.reshape(tensor, (frames, consts.LANDMARK_SIZE, 3))
+        mask = torch.ones(consts.LANDMARK_SIZE, 1)
         
         if torch.rand(1) < self.face_drop_prob:
             mask[self.face_indices] = 0
@@ -79,7 +80,7 @@ class CompletelyOccludeBodyParts(object):
         mask_expanded = mask.unsqueeze(0)
         landmark_tensor = landmark_tensor * mask_expanded
         
-        return torch.reshape(landmark_tensor, (frames, 225))
+        return torch.reshape(landmark_tensor, (frames, consts.INPUT_SIZE))
 
 class TimeWarping(object):
     def __init__(self, sigma=0.15):
@@ -107,7 +108,7 @@ class ScaleLandmarks(object):
         # tensor shape: [frames, 225]
         frames = tensor.size(0)
         # 1. Reshape a [frames, 75, 3]
-        landmark_tensor = torch.reshape(tensor,(frames,75,3))
+        landmark_tensor = torch.reshape(tensor,(frames,consts.LANDMARK_SIZE,3))
         
         scale_factor = torch.empty(1).uniform_(self.min_scale, self.max_scale).item()
         
@@ -116,14 +117,14 @@ class ScaleLandmarks(object):
         landmark_tensor[..., :2] = landmark_tensor[..., :2] * scale_factor
         
         # 4. Reshape de vuelta a [frames, 225]
-        return torch.reshape(landmark_tensor,(frames,225))
+        return torch.reshape(landmark_tensor,(frames,consts.INPUT_SIZE))
 def init_transforms():
     train_transform = transforms.Compose([AddNoise(std=0.01)
                                           ,TemporallyOccludeLandmarks(drop_prob=0.08)
                                           #,CompletelyOccludeLandmarks(drop_prob=0.01)
                                           ,TimeWarping(sigma=0.05)
                                           ,ScaleLandmarks(min_scale=0.9, max_scale=1.1)
-                                          #,CompletelyOccludeBodyParts(face_drop_prob=0.75, arm_drop_prob=0.15, leg_drop_prob=0.75)
+                                          #,CompletelyOccludeBodyParts(face_drop_prob=0.consts.LANDMARK_SIZE, arm_drop_prob=0.15, leg_drop_prob=0.consts.LANDMARK_SIZE)
                                           ])
     val_transform = None 
     test_transform = None

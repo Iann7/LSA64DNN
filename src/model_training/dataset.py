@@ -9,6 +9,8 @@ from torchvision import transforms
 from torch.utils.data import Dataset,DataLoader,random_split
 from augmentation_classes import init_transforms
 import torch.nn.functional as F
+import constants as const
+
 # Paths
 DATA_DIR = "data/raw"
 POSE_DIR = "data/poses/shifted_and_blurred"
@@ -66,7 +68,7 @@ def collate_fn_with_lengths(batch):
 def split_dataset():
     train_transform, val_transform, test_transform = init_transforms()
 
-    full_dataset = LSA64Dataset(pd.read_csv(METADATA_DIR),POSE_DIR,max_frames=120,transform=None)
+    full_dataset = LSA64Dataset(pd.read_csv(METADATA_DIR),DATA_DIR,max_frames=120,transform=None)
     
     total_size = len(full_dataset)
     train_size = int(0.7 * total_size)
@@ -98,7 +100,8 @@ def split_dataset_by_LOSO(signer_id):
     train_indices = [i for i, sid in enumerate(signer_ids) if sid != signer_id]
     test_indices = [i for i, sid in enumerate(signer_ids) if sid == signer_id]
     
-    train_idx, val_idx = train_test_split(train_indices, test_size=0.1, random_state=2026)
+    
+    train_idx,val_idx = train_test_split(train_indices, test_size=0.1, random_state=2026)
     
     train_dataset = LSA64Dataset(dataframe, POSE_DIR, max_frames=120, transform=train_transform, indices=train_idx)
     val_dataset = LSA64Dataset(dataframe, POSE_DIR, max_frames=120, transform=val_transform, indices=val_idx)

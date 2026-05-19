@@ -113,7 +113,6 @@ def parse_video(video_path, pose,hands):
         ret, frame = cap.read()
         if not ret:
             break
-        # 3. Pass holistic through here
         landmark = extract_landmark_from_frame(frame,pose,hands)
         landmarks.append(landmark)
     cap.release()
@@ -124,7 +123,7 @@ def extract_landmark_from_frame(frame,pose,hands):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     pose_result = get_pose_coords(pose.process(rgb_frame).pose_landmarks,33)
     hand_result = extract_hand_coords(hands.process(rgb_frame))
-    return np.concatenate([pose_result,hand_result])# ✓ FIXED: iterate over the list
+    return np.concatenate([pose_result,hand_result])
 
 def get_pose_coords(res, num_landmarks):
     if res:
