@@ -69,9 +69,9 @@ class LSA64Classifier(nn.Module):
     def _forward_stream(self,x,gru,lengths):
         # lengths en CPU (del DataLoader)
         # x en GPU
-        
+        lengths_cpu = lengths.cpu()
         packed = nn.utils.rnn.pack_padded_sequence(
-            x, lengths, batch_first=True, enforce_sorted=False
+            x, lengths_cpu, batch_first=True, enforce_sorted=False
         )
         
         packed_out, _ = gru(packed)
