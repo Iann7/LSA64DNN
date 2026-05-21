@@ -36,8 +36,14 @@ def check_best_model_accuracy(device, val_loader, test_loader, best_model_state)
     val_metrics = get_all_metrics(val_loader, best_model_state, device)
     test_metrics = get_all_metrics(test_loader, best_model_state, device)
     
-    print(f"\nValidation - Acc: {val_metrics['accuracy']:.2f}%, F1: {val_metrics['f1']:.4f}")
-    print(f"Test - Acc: {test_metrics['accuracy']:.2f}%, F1: {test_metrics['f1']:.4f}")
+    print(
+        f"\nValidation - Acc: {val_metrics['accuracy']:.2f}%, "
+        f"Top-3 Acc: {val_metrics['top3_accuracy']:.2f}%, F1: {val_metrics['f1']:.4f}"
+    )
+    print(
+        f"Test - Acc: {test_metrics['accuracy']:.2f}%, "
+        f"Top-3 Acc: {test_metrics['top3_accuracy']:.2f}%, F1: {test_metrics['f1']:.4f}"
+    )
     
     return val_metrics, test_metrics
 
@@ -48,20 +54,26 @@ def get_all_metrics(loader, model_state, device):
     
     all_preds = []
     all_labels = []
+    all_top3_preds = []
     
     with torch.no_grad():
         for signs, labels, lengths in loader:
             signs, labels = signs.to(device), labels.to(device)
             outputs = model(signs, lengths)
             _, preds = torch.max(outputs, 1)
+            _, top3_preds = torch.topk(outputs, k=3, dim=1)
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
+            all_top3_preds.extend(top3_preds.cpu().numpy())
     
     all_preds = np.array(all_preds)
     all_labels = np.array(all_labels)
+    all_top3_preds = np.array(all_top3_preds)
+    top3_correct = np.any(all_top3_preds == all_labels[:, None], axis=1)
     
     metrics = {
         'accuracy': np.mean(all_preds == all_labels) * 100,
+        'top3_accuracy': np.mean(top3_correct) * 100,
         'f1': f1_score(all_labels, all_preds, average='weighted'),
         'precision': precision_score(all_labels, all_preds, average='weighted'),
         'recall': recall_score(all_labels, all_preds, average='weighted'),
@@ -76,6 +88,8 @@ def plot_results(val_metrics_list, test_metrics_list, num_signers):
     signers = range(num_signers)
     val_acc = [m['accuracy'] for m in val_metrics_list]
     test_acc = [m['accuracy'] for m in test_metrics_list]
+    val_top3_acc = [m['top3_accuracy'] for m in val_metrics_list]
+    test_top3_acc = [m['top3_accuracy'] for m in test_metrics_list]
     val_f1 = [m['f1'] * 100 for m in val_metrics_list]
     test_f1 = [m['f1'] * 100 for m in test_metrics_list]
     
@@ -140,6 +154,8 @@ def plot_results(val_metrics_list, test_metrics_list, num_signers):
     print("="*60)
     print(f"Validation Accuracy:  {np.mean(val_acc):.2f}% ± {np.std(val_acc):.2f}")
     print(f"Test Accuracy:        {np.mean(test_acc):.2f}% ± {np.std(test_acc):.2f}")
+    print(f"Validation Top-3 Acc: {np.mean(val_top3_acc):.2f}% ± {np.std(val_top3_acc):.2f}")
+    print(f"Test Top-3 Acc:       {np.mean(test_top3_acc):.2f}% ± {np.std(test_top3_acc):.2f}")
     print(f"Validation F1-Score:  {np.mean(val_f1):.2f}% ± {np.std(val_f1):.2f}")
     print(f"Test F1-Score:        {np.mean(test_f1):.2f}% ± {np.std(test_f1):.2f}")
     print("="*60)
