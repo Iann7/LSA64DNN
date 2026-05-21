@@ -2,7 +2,17 @@ import torch
 from model import LSA64Classifier
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix
+
+PLOTS_DIR = "plots"
+
+def save_current_plot(filename):
+    os.makedirs(PLOTS_DIR, exist_ok=True)
+    path = os.path.join(PLOTS_DIR, filename)
+    plt.savefig(path, dpi=300, bbox_inches='tight')
+    print(f"Gráfico guardado en: {path}")
+
 def check_accuracy(loader, model, device):
     num_correct = 0
     num_samples = 0
@@ -121,6 +131,7 @@ def plot_results(val_metrics_list, test_metrics_list, num_signers):
                     xytext=(0, 3), textcoords="offset points", ha='center', fontsize=8)
     
     plt.tight_layout()
+    save_current_plot("loso_accuracy_f1.png")
     plt.show()
     
     # Estadísticas
@@ -133,6 +144,9 @@ def plot_results(val_metrics_list, test_metrics_list, num_signers):
     print(f"Test F1-Score:        {np.mean(test_f1):.2f}% ± {np.std(test_f1):.2f}")
     print("="*60)
 
+    test_cm = np.sum([m['confusion_matrix'] for m in test_metrics_list], axis=0)
+    plot_confusion_matrix(test_cm, title="Matriz de Confusión Agregada - Test LOSO")
+
 def plot_confusion_matrix(cm, title="Matriz de Confusión"):
     """Grafica matriz de confusión"""
     plt.figure(figsize=(14, 12))
@@ -142,4 +156,6 @@ def plot_confusion_matrix(cm, title="Matriz de Confusión"):
     plt.ylabel('True Label', fontsize=12)
     plt.xlabel('Predicted Label', fontsize=12)
     plt.tight_layout()
+    safe_title = title.lower().replace(" ", "_").replace("-", "_")
+    save_current_plot(f"{safe_title}.png")
     plt.show()

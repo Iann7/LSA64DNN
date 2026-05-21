@@ -121,10 +121,10 @@ class ScaleLandmarks(object):
 def init_transforms():
     train_transform = transforms.Compose([AddNoise(std=0.01)
                                           ,TemporallyOccludeLandmarks(drop_prob=0.08)
-                                          #,CompletelyOccludeLandmarks(drop_prob=0.01)
+                                          ,CompletelyOccludeLandmarks(drop_prob=0.01)
                                           ,TimeWarping(sigma=0.05)
                                           ,ScaleLandmarks(min_scale=0.9, max_scale=1.1)
-                                          #,CompletelyOccludeBodyParts(face_drop_prob=0.consts.LANDMARK_SIZE, arm_drop_prob=0.15, leg_drop_prob=0.consts.LANDMARK_SIZE)
+                                          ,CompletelyOccludeBodyParts(0.5,0.01)
                                           ])
     val_transform = None 
     test_transform = None
