@@ -79,7 +79,6 @@ class LSA64Classifier(nn.Module):
                           bidirectional=True)
         self.fusion = nn.Linear(hidden_size * 4, num_classes)
         self.bi_cross_attention = BidirectionalCrossAttention(hidden_size)
-        self.stream_weights = nn.Parameter(torch.tensor([0.5, 0.5])) 
     def forward(self, x, lengths):
         out_body = self._forward_stream(x[:,:,:33*3],self.body_parts_lstm,lengths)
         out_hands = self._forward_stream(x[:,:,33*3:],self.hands_lstm,lengths)
@@ -88,8 +87,7 @@ class LSA64Classifier(nn.Module):
         hands_attended, body_attended, att_weights= self.bi_cross_attention(out_body,out_hands,mask)
         out_body__att_mean = self._masked_mean(body_attended,mask)
         out_hands_att_mean = self._masked_mean(hands_attended,mask)
-        weights = F.softmax(self.stream_weights, dim=0)
-        out_combined = self.fusion(torch.cat([out_body__att_mean*weights[0],out_hands_att_mean*weights[1]],dim=1))
+        out_combined = self.fusion(torch.cat([out_body__att_mean,out_hands_att_mean],dim=1))
         return out_combined
     
     def _forward_stream(self,x,gru,lengths):
