@@ -4,7 +4,7 @@ import  os
 import constants as consts
 from torchvision import transforms 
 
-class AddNoise(object):
+class AddLocalNoise(object):
   def __init__(self,std=0.025):
      self.std = std 
   def __call__(self,tensor):
@@ -119,12 +119,12 @@ class ScaleLandmarks(object):
         # 4. Reshape de vuelta a [frames, 225]
         return torch.reshape(landmark_tensor,(frames,consts.INPUT_SIZE))
 def init_transforms():
-    train_transform = transforms.Compose([AddNoise(std=0.01)
+    train_transform = transforms.Compose([AddLocalNoise(std=0.01)
                                           ,TemporallyOccludeLandmarks(drop_prob=0.08)
                                           ,CompletelyOccludeLandmarks(drop_prob=0.01)
                                           ,TimeWarping(sigma=0.05)
                                           ,ScaleLandmarks(min_scale=0.9, max_scale=1.1)
-                                          ,CompletelyOccludeBodyParts(0.5,0.01)
+                                          ,CompletelyOccludeBo"dyParts(0.5,0.01)
                                           ])
     val_transform = None 
     test_transform = None

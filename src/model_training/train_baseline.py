@@ -44,7 +44,12 @@ def train_epochs(device, train_loader, val_loader):
     best_val_loss = float('inf')
     best_model_state = None 
     not_improving = 0 
-    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
+    optimizer = optim.AdamW(
+    model.parameters(), 
+    lr=0.001, 
+    betas=(0.9, 0.98), 
+    weight_decay=0.01
+    )
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=8,threshold=0.01)
     #scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
