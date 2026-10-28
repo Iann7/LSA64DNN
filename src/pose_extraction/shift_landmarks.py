@@ -33,17 +33,104 @@ def parse_and_shift():
 
 def process_single_npy(npy_path):
     video_landmarks = np.load(npy_path)
-    number_of_frames = video_landmarks.shape[0]
-    shifted_landmarks = video_landmarks.reshape(number_of_frames,-1,3)
-
-    fill_in_zeroes(shifted_landmarks)
-    shifted_landmarks = shift_landmarks(shifted_landmarks)
-    apply_gaussian_filter(shifted_landmarks)
-
-    shifted_landmarks = shifted_landmarks.reshape(number_of_frames,-1)
+    shifted_landmarks =process_sequence_pose(video_landmarks)
     output_path = OUTPUT_DIR / npy_path.name
     np.save(output_path,shifted_landmarks)
     return 
+
+import numpy as np
+
+class OneEuroFilter:
+    def __init__(self, t0, x0, min_cutoff=1.0, beta=0.0, d_cutoff=1.0):
+        """
+        min_cutoff: Frecuencia de corte mínima (reduce ruido estático).
+        beta: Parámetro de velocidad (reduce el retardo en movimiento).
+        d_cutoff: Frecuencia de corte para la derivada.
+        """
+        self.min_cutoff = min_cutoff
+        self.beta = beta
+        self.d_cutoff = d_cutoff
+        self.x_previous = x0
+        self.dx_previous = np.zeros_like(x0)
+        self.t_previous = t0
+
+    def _alpha(self, cutoff, dt):
+        tau = 1.0 / (2.0 * np.pi * cutoff)
+        return 1.0 / (1.0 + tau / dt)
+
+    def __call__(self, t, x):
+        t_e = t - self.t_e_previous if hasattr(self, 't_e_previous') else 1.0 / 30.0 # Asumiendo 30fps por defecto si no hay delta
+        # Simplificación para el primer frame:
+        if self.t_previous is None or t == self.t_previous:
+            dt = 1.0 / 30.0
+        else:
+            dt = t - self.t_previous
+
+        self.t_previous = t
+
+        # Derivada estimada
+        dx = (x - self.x_previous) / dt
+        edx = self._alpha(self.d_cutoff, dt) * dx + (1.0 - self._alpha(self.d_cutoff, dt)) * self.dx_previous
+        self.dx_previous = edx
+
+        # Frecuencia de corte adaptativa basada en la velocidad
+        cutoff = self.min_cutoff + self.beta * np.abs(edx)
+        alpha = self._alpha(cutoff, dt)
+        
+        # Filtrado exponencial
+        x_filtered = alpha * x + (1.0 - alpha) * self.x_previous
+        self.x_previous = x_filtered
+        return x_filtered
+
+
+
+
+def apply_one_euro_filter(shifted_landmarks, min_cutoff=1.7, beta=0.03):
+    n_frames, n_landmarks, n_dims = shifted_landmarks.shape
+    filtered_landmarks = np.copy(shifted_landmarks)
+    
+    # Inicializar el filtro con el primer frame
+    # Usamos un tiempo simulado con dt = 1/30 (asumiendo 30 FPS)
+    dt = 1.0 / 30.0
+    x_prev = shifted_landmarks[0]
+    dx_prev = np.zeros_like(x_prev)
+    
+    # Parámetros internos del filtro
+    tau = 1.0 / (2.0 * np.pi * min_cutoff)
+    
+    for i in range(1, n_frames):
+        x = shifted_landmarks[i]
+        
+        # Cálculo de la derivada (velocidad)
+        dx = (x - x_prev) / dt
+        # alpha para la derivada
+        alpha_d = 1.0 / (1.0 / (2.0 * np.pi * 1.0 * dt) + 1.0) # d_cutoff por defecto en 1.0
+        edx = alpha_d * dx + (1.0 - alpha_d) * dx_prev
+        dx_prev = edx
+        
+        # Frecuencia de corte adaptativa por landmark y dimensión
+        cutoff = min_cutoff + beta * np.abs(edx)
+        tau_dynamic = 1.0 / (2.0 * np.pi * cutoff)
+        alpha = 1.0 / (tau_dynamic / dt + 1.0)
+        
+        # Aplicar filtro
+        x_filtered = alpha * x + (1.0 - alpha) * x_prev
+        filtered_landmarks[i] = x_filtered
+        x_prev = x_filtered
+        
+    return filtered_landmarks
+
+
+def process_sequence_pose(poses):
+    number_of_poses = poses.shape[0]
+    shifted_landmarks = poses.reshape(number_of_poses, -1, 3)
+
+    fill_in_zeroes(shifted_landmarks)
+    shifted_landmarks = shift_landmarks(shifted_landmarks)
+    
+    shifted_landmarks = apply_one_euro_filter(shifted_landmarks)
+    
+    return shifted_landmarks.reshape(number_of_poses,-1)
 
 def fill_in_zeroes(shifted_landmarks):
     num_landmarks = shifted_landmarks.shape[1]

@@ -1,7 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import constants as const   
+
+try:
+    from . import constants as const   # when imported as src.model_training.model
+except ImportError:
+    import constants as const           # when run directly inside model_training/
+
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch.nn.functional as F
 #class LSA64Classifier(nn.Module): 
@@ -108,3 +113,13 @@ class LSA64Classifier(nn.Module):
         x_sum = x_masked.sum(dim=1)
         x_count = mask_expanded.sum(dim=1).clamp(min=1) 
         return x_sum / x_count
+
+def load_model_with_best_weights(device="cpu"):
+    state = torch.load("lsa64_baseline_lstm.pth", map_location=device)
+    model = LSA64Classifier()
+    model.load_state_dict(state,strict=True)
+    return model
+    
+
+
+

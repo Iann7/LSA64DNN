@@ -1,13 +1,14 @@
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor,as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm 
-import os 
-import mediapipe as mp
 import cv2  
 import numpy as np 
-import re 
 import pandas as pd 
 
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+from src.pose_extraction.shift_landmarks import process_sequence_pose
 # Paths
 DATA_DIR = Path("data/raw")
 POSE_DIR = Path("data/poses/shifted_and_blurred")
@@ -36,13 +37,13 @@ SIGN_NAMES = {
 }   
 
 def parse_and_extract():
-    num_workers = 7
+    num_workers = 4
     print(f"Starting parallel processing with {num_workers} cores!")
     
     all_labels = []
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         future_to_video = {executor.submit(process_single_video, video_path): video_path for video_path in video_files}
-        for future in tqdm(as_completed(future_to_video),total=len(video_files),desc="Processing Videos"):
+        for future in tqdm(as_completed(future_to_video), total=len(video_files), desc="Processing Videos"):
             result = future.result() 
             if result.get('success'):
                 all_labels.append(result)
@@ -56,15 +57,15 @@ def parse_and_extract():
 
 def process_single_video(video_path):
     try:
-        pose_model,hands_model = init_mediapipe()
+        pose, hands = init_mediapipe()
         
         stem = video_path.stem  
         parts = stem.split('_')  
         sign_id = int(parts[0])
         
-        video_landmarks = parse_video(video_path, pose_model,hands_model)
-        pose_model.close()
-        hands_model.close()
+        video_landmarks = parse_video(video_path, pose, hands)
+        pose.close()
+        hands.close()
 
         if len(video_landmarks) > 0:
             poses_array = np.array(video_landmarks)
@@ -76,7 +77,7 @@ def process_single_video(video_path):
                 'sign_id': sign_id,
                 'subject': int(parts[1]),
                 'repetition': int(parts[2]),
-                'sign_name': SIGN_NAMES[sign_id],
+                'sign_name': SIGN_NAMES.get(sign_id, "Unknown"),
                 'num_frames': len(video_landmarks),
                 'success': True
             }
@@ -87,70 +88,72 @@ def process_single_video(video_path):
 
 
 def init_mediapipe():
-    mp_pose = mp.solutions.pose
-    pose = mp_pose.Pose(
-        static_image_mode=False,      
-        model_complexity=1,           
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5
+    pose_options = vision.PoseLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path="models/pose_landmarker_lite.task"),
+        running_mode=vision.RunningMode.IMAGE,
+        min_pose_detection_confidence=0.65,
+        min_pose_presence_confidence=0.65,
+        min_tracking_confidence=0.65,
     )
+    pose = vision.PoseLandmarker.create_from_options(pose_options)
     
-    mp_hands = mp.solutions.hands
-    hands = mp_hands.Hands(
-        static_image_mode=False,      
-        max_num_hands=2,
-        model_complexity=1,           
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5
+    hand_options = vision.HandLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path="models/hand_landmarker.task"),
+        running_mode=vision.RunningMode.IMAGE,
+        num_hands=2,
+        min_hand_detection_confidence=0.65,
+        min_hand_presence_confidence=0.65,
+        min_tracking_confidence=0.65,
     )
+    hands = vision.HandLandmarker.create_from_options(hand_options)
     
     return pose, hands
 
-def parse_video(video_path, pose,hands):
+def parse_video(video_path, pose, hands):
     cap = cv2.VideoCapture(str(video_path))
     landmarks = [] 
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
-        landmark = extract_landmark_from_frame(frame,pose,hands)
+        landmark = extract_landmark_from_frame(frame, pose, hands)
         landmarks.append(landmark)
     cap.release()
     return landmarks
 
-def extract_landmark_from_frame(frame,pose,hands):
-
+def extract_landmark_from_frame(frame, pose, hands):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    pose_result = get_pose_coords(pose.process(rgb_frame).pose_landmarks,33)
-    hand_result = extract_hand_coords(hands.process(rgb_frame))
-    return np.concatenate([pose_result,hand_result])
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+    
+    pose_result = get_pose_coords(pose.detect(mp_image), 33)
+    hand_result = extract_hand_coords(hands.detect(mp_image))
+    
+    return np.concatenate([pose_result, hand_result])
 
 def get_pose_coords(res, num_landmarks):
-    if res:
-        return [val for lm in res.landmark for val in [lm.x, lm.y, lm.z]]
+    if res and res.pose_landmarks and len(res.pose_landmarks) > 0:
+        return [val for lm in res.pose_landmarks[0] for val in [lm.x, lm.y, lm.z]]
     else:
         return [0.0] * (num_landmarks * 3) 
     
 def extract_hand_coords(hand_result):
     output_coords = [0.0] * (42 * 3) 
     
-    if not hand_result.multi_hand_landmarks:
+    if not hand_result or not hand_result.hand_landmarks:
         return output_coords
         
-    for idx, hand_handedness in enumerate(hand_result.multi_handedness):
-        # MediaPipe a veces invierte las manos en el video, 
-        # pero el label 'Left'/'Right' suele ser consistente con la anatomía.
-        label = hand_handedness.classification[0].label # "Left" o "Right"
-        landmarks = hand_result.multi_hand_landmarks[idx]
+    for idx, handedness in enumerate(hand_result.handedness):
+        label = handedness[0].category_name # "Left" or "Right"
+        landmarks = hand_result.hand_landmarks[idx]
         
         temp_coords = []
-        for lm in landmarks.landmark:
+        for lm in landmarks:
             temp_coords.extend([lm.x, lm.y, lm.z])
             
         if label == "Right":
-            output_coords[0:63] = temp_coords  # Los primeros 21 puntos
+            output_coords[0:63] = temp_coords  
         else:
-            output_coords[63:126] = temp_coords # Los segundos 21 puntos
+            output_coords[63:126] = temp_coords 
             
     return output_coords
 

@@ -68,7 +68,7 @@ def collate_fn_with_lengths(batch):
 def split_dataset():
     train_transform, val_transform, test_transform = init_transforms()
 
-    full_dataset = LSA64Dataset(pd.read_csv(METADATA_DIR),DATA_DIR,max_frames=120,transform=None)
+    full_dataset = LSA64Dataset(pd.read_csv(METADATA_DIR),POSE_DIR,max_frames=120,transform=None)
     
     total_size = len(full_dataset)
     train_size = int(0.7 * total_size)
