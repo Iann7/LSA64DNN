@@ -1,4 +1,4 @@
-from augmentation_classes import AddNoise,TemporallyOccludeLandmarks,CompletelyOccludeLandmarks,TimeWarping
+from augmentation_classes import AddLocalNoise,TemporallyOccludeLandmarks,CompletelyOccludeLandmarks,TimeWarping
 import torch 
 import numpy as np 
 import os
